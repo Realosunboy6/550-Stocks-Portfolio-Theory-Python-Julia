@@ -1,83 +1,91 @@
 # 550 Stocks Portfolio Theory
 
-This repository contains portfolio optimization analysis using matrix algebra for 550 stocks across multiple sectors.
+Portfolio optimization with matrix algebra on ~400 US stocks across 11 GICS
+sectors, in Python and Julia. Data comes **straight from Yahoo Finance** —
+no CSVs, no local paths.
 
 ## Overview
 
 The project implements Modern Portfolio Theory (MPT) concepts including:
 - Log returns calculation
-- Correlation and covariance matrix analysis
+- Correlation and covariance matrix analysis (with positive-semidefinite check)
 - Portfolio risk and return calculations
-- Sharpe ratio optimization
+- Sharpe ratio optimization (L-BFGS-B and SLSQP / IPNewton)
 - Train/test validation of optimized portfolios
 
 ## Files
 
-### Python Implementation
-- `part1_Matrix_algebra.ipynb` - Data loading, preprocessing, and basic portfolio metrics
-- `part2_Matrix_algebra.ipynb` - Portfolio optimization using scipy.optimize
+### Main notebooks (start here)
+- `portfolio_theory_python.ipynb` — the full pipeline in Python: Yahoo
+  download → log-return matrix → correlation/covariance → PSD check →
+  equal-weight metrics → Sharpe optimization → 60/40 train/test validation.
+  Verified end-to-end on 2026-10-06 (403 tickers, 2020 → today).
+- `portfolio_theory_julia.ipynb` — the same pipeline in Julia with Optim.jl.
+  Reads the shared `prices_long.csv` cache written by the Python notebook
+  (run it once first). Verified end-to-end on 2026-10-06 with Julia 1.11.7:
+  identical 1697×403 return matrix, correlation eigenvalues match Python to
+  5 decimals, equal-weight Sharpe 0.0255 in both. The optimizers land on
+  different local optima (max-Sharpe is non-convex): Python SLSQP 0.1042 vs
+  Julia L-BFGS 0.0715–0.0772 in-sample.
 
-### Julia Implementation
-- `part1_Matrix_algebra_julia.ipynb` - Data loading, preprocessing, and basic portfolio metrics (Julia version)
-- `part2_Matrix_algebra_julia.ipynb` - Portfolio optimization using Optim.jl (Julia version)
+**Global-optimum check (2026-10-06/07):** max-Sharpe has a convex QP
+reformulation (min y'Σy s.t. μ'y = 1, y ≥ 0, then w = y/Σy), solved with the
+AMPL+Gurobi course license (`gurobi_check.py`): certified global daily Sharpe
+**0.1043** (barrier, 11 iterations, max weight 0.21 so the w ≤ 1 cap never
+binds). Python's SLSQP (0.1042, 13 iterations) had found the global optimum.
+Julia's L-BFGS variants stopped at inferior local optima (0.0715–0.0772), so
+the Julia notebook gained a JuMP + AmplNLWriter section driving the same
+AMPL-bundled Gurobi driver — it certifies **0.1042** in Julia too (verified
+2026-10-07).
 
-## Part 1: Data Processing and Portfolio Metrics
+### Reference
+- `Portfolio_Optimization_COLAB.ipynb` — the detailed full production
+  pipeline this work grew from (backtest engine, CVaR sweep, stress tests,
+  dashboard). Ancestor of the
+  [portlab](https://github.com/Realosunboy6/free-portfolio-visualizer) package.
+- `Portfolio_Optimization_SuperPrompt.docx` — prompt doc
 
-**Key Features:**
-- Load stock data from multiple sector CSV files
-- Calculate log returns for each stock
-- Create return matrix with dates as rows and tickers as columns
-- Compute correlation and covariance matrices
-- Verify positive semi-definite properties
-- Calculate portfolio metrics (mean, variance, Sharpe ratio)
-- Visualize cumulative returns
+## Data
 
-## Part 2: Portfolio Optimization
+Downloaded live via `yfinance`: 409 curated tickers (11 GICS sectors),
+2020-01-01 → today, adjusted closes. Tickers that fail to download
+(delisted, e.g. CTRA/BK/HOLX in the Oct-2026 run) are dropped automatically;
+prices cache to `prices_2020_latest.parquet` so re-runs skip the download.
 
-**Key Features:**
-- Define Sharpe ratio optimization objective
-- Implement multiple optimization approaches:
-  - L-BFGS-B with box constraints
-  - SLSQP with equality constraints (Python) / IPNewton (Julia)
-- Train/test split for validation
-- Select top volatile assets for optimization
-- Visualize optimized portfolio performance
-- Compare optimized vs equal-weighted portfolios
+Expected columns after the download step:
+- `Date` - Trading date
+- `Ticker` - Stock ticker symbol
+- `Close` - Closing price
+- `Sector` - Market sector
 
 ## Requirements
 
 ### Python
 ```bash
-pip install pandas numpy scipy plotly jupyter
+pip install yfinance pandas numpy scipy plotly pyarrow jupyter
 ```
 
 ### Julia
 ```julia
 using Pkg
-Pkg.add(["CSV", "DataFrames", "LinearAlgebra", "Statistics", "Dates", "PlotlyJS", "Optim", "Plots"])
+Pkg.add(["CSV", "DataFrames", "LinearAlgebra", "Statistics", "Dates", "PlotlyJS", "Optim", "JuMP", "AmplNLWriter"])
 ```
+The JuMP/AmplNLWriter section also needs the AMPL course license: set
+`AMPL_BIN`/`GUROBI_BIN` env vars to your amplpy install (see the notebook
+cell) so the Gurobi driver finds `ampl.lic`.
 
 ## Usage
 
 ### Python
 ```bash
-jupyter notebook part1_Matrix_algebra.ipynb
-jupyter notebook part2_Matrix_algebra.ipynb
+jupyter notebook portfolio_theory_python.ipynb
 ```
 
 ### Julia
 ```bash
-jupyter notebook part1_Matrix_algebra_julia.ipynb
-jupyter notebook part2_Matrix_algebra_julia.ipynb
+# run the Python notebook once first to write prices_long.csv, then:
+jupyter notebook portfolio_theory_julia.ipynb
 ```
-
-## Data Format
-
-The code expects CSV files with the following columns:
-- `Date` - Trading date
-- `Ticker` - Stock ticker symbol
-- `Close` - Closing price
-- `Sector` - Market sector
 
 ## Key Concepts
 
@@ -102,6 +110,7 @@ The Julia implementation provides equivalent functionality to the Python version
 | numpy | LinearAlgebra, Statistics |
 | scipy.optimize | Optim.jl |
 | plotly | PlotlyJS.jl |
+| | |
 
 ## License
 
